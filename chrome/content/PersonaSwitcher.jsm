@@ -139,16 +139,6 @@ PersonaSwitcher.extensionManager = null;
 PersonaSwitcher.currentThemes = null;
 PersonaSwitcher.currentIndex = 0;
 
-PersonaSwitcher.PersonasPlusPresent = true;
-try
-{
-    Components.utils.import ('resource://personas/modules/service.js');
-}
-catch (e)
-{
-    PersonaSwitcher.PersonasPlusPresent = false;
-}
-
 PersonaSwitcher.BTPresent = true;
 try
 {
@@ -184,10 +174,16 @@ PersonaSwitcher.prefsObserver =
             case 'preview':
                 PersonaSwitcher.allDocuments
                     (PersonaSwitcher.createStaticPopups);
+                PersonaSwitcher.allDocuments(
+                    PersonaSwitcher.setCurrentTheme, 
+                    PersonaSwitcher.currentIndex);
                 break;
             case 'icon-preview':
                 PersonaSwitcher.allDocuments
                     (PersonaSwitcher.createStaticPopups);
+                PersonaSwitcher.allDocuments(
+                    PersonaSwitcher.setCurrentTheme, 
+                    PersonaSwitcher.currentIndex);
                 break;            
             case 'startup-switch':
                 break; // nothing to do as the value is queried elsewhere
@@ -209,10 +205,8 @@ PersonaSwitcher.prefsObserver =
             case 'autoshift': case 'autoalt': case 'autocontrol':
             case 'autometa': case 'autokey': case 'autoaccel': case 'autoos':
             case 'activateshift': case 'activatealt': case 'activatecontrol':
-            case 'activatemeta': case 'activatekey': case 'activateaccel': 
-            case 'activateos': 
-            case 'toolsshift': case 'toolsalt': case 'toolscontrol': 
-            case 'toolsmeta': case 'toolskey': case 'toolsaccel': case 'toolsos':
+            case 'activatemeta': case 'activatekey':
+            case 'activateaccel': case 'activateos':
                 PersonaSwitcher.allDocuments (PersonaSwitcher.setKeyset);
                 break;
             case 'accesskey':
@@ -231,6 +225,9 @@ PersonaSwitcher.prefsObserver =
 
                 PersonaSwitcher.allDocuments
                     (PersonaSwitcher.createStaticPopups);
+                PersonaSwitcher.allDocuments(
+                    PersonaSwitcher.setCurrentTheme, 
+                    PersonaSwitcher.currentIndex);
                 break;
             default:
                 PersonaSwitcher.logger.log (data);
@@ -244,16 +241,23 @@ PersonaSwitcher.prefs.addObserver ('', PersonaSwitcher.prefsObserver, false);
 
 
 // call a function passed as a parameter with one document of each window
-PersonaSwitcher.allDocuments = function (func)
+PersonaSwitcher.allDocuments = function (func, index)
 {    
     var enumerator = PersonaSwitcher.windowMediator.
                         getEnumerator ("navigator:browser");
     var aWindow;
     while (enumerator.hasMoreElements())
     {
-            aWindow = enumerator.getNext();
-            PersonaSwitcher.logger.log ('In allDocuments with ' + aWindow);
+        aWindow = enumerator.getNext();
+        PersonaSwitcher.logger.log ('In allDocuments with ' + aWindow);
+        if (undefined !== index) 
+        {
+            func(aWindow.document, index);
+        }
+        else
+        {
             func(aWindow.document);
+        }
     }
 };
 
@@ -319,28 +323,27 @@ PersonaSwitcher.rotate = function()
 {
     PersonaSwitcher.logger.log("in rotate");
 
+    var newIndex = PersonaSwitcher.currentIndex;
     if (PersonaSwitcher.currentThemes.length <= 1) return;
 
     if (PersonaSwitcher.prefs.getBoolPref ('random'))
     {
-        var prevIndex = PersonaSwitcher.currentIndex;
+        var prevIndex = newIndex;
         // pick a number between 1 and the end until a new index is found
-        while(PersonaSwitcher.currentIndex === prevIndex) 
+        while(newIndex === prevIndex) 
         {
-            PersonaSwitcher.currentIndex = Math.floor ((Math.random() *
+            newIndex = Math.floor ((Math.random() *
             (PersonaSwitcher.currentThemes.length-1)) + 1);
         }
     }
     else
     {
-        PersonaSwitcher.currentIndex = (PersonaSwitcher.currentIndex + 1) %
+        newIndex = (PersonaSwitcher.currentIndex + 1) %
             PersonaSwitcher.currentThemes.length;
     }
-
-    PersonaSwitcher.logger.log (PersonaSwitcher.currentIndex);
-    PersonaSwitcher.switchTo
-        (PersonaSwitcher.currentThemes[PersonaSwitcher.currentIndex],
-         PersonaSwitcher.currentIndex);
+    
+    PersonaSwitcher.logger.log (newIndex);
+    PersonaSwitcher.switchTo(PersonaSwitcher.currentThemes[newIndex], newIndex);
 };
 
 
@@ -353,72 +356,17 @@ PersonaSwitcher.toggleAuto = function()
         ! PersonaSwitcher.prefs.getBoolPref ('auto'));
 };
 
-// https://developer.mozilla.org/en-US/Add-ons/Code_snippets/Alerts_and_Notifications#Using_notification_box
-PersonaSwitcher.removeNotification = function (win)
-{
-    var notificationBox = null;
-    var name = PersonaSwitcher.XULAppInfo.name;
-
-    if ('Firefox' === name || 'SeaMonkey' === name || 'Pale Moon' === name)
-    {
-        if ('function' === typeof (win.getBrowser))
-        {
-            var browser = win.getBrowser();
-            if (browser)
-            {
-                notificationBox = browser.getNotificationBox();
-            }
-        }
-    }
-    else if ('Thunderbird' === name)
-    {
-        notificationBox = 
-            win.document.getElementById ('mail-notification-box');
-    }
-
-    if (null !== notificationBox)
-    {
-        var notification = notificationBox.getNotificationWithValue
-            ('lwtheme-install-notification');
-
-        if (null !== notification)
-        {
-            notificationBox.removeNotification (notification);
-        }
-    }
-};
 
 PersonaSwitcher.switchTo = function (toWhich, index)
 {
     PersonaSwitcher.logger.log (toWhich);
+    PersonaSwitcher.allDocuments(PersonaSwitcher.setCurrentTheme, index);
+
     PersonaSwitcher.currentIndex = undefined !== index ? 
                                             index :
                                             PersonaSwitcher.currentIndex;
     
     PersonaSwitcher.prefs.setIntPref ('current', PersonaSwitcher.currentIndex);
-
-    /*
-    ** if it's there, use it
-    */
-    if (PersonaSwitcher.PersonasPlusPresent)
-    {
-        PersonaSwitcher.logger.log ('using PP');
-
-        if ('{gh y972ce4c6-7e08-4474-a285-3208198ce6fd}' === toWhich.id)
-        {
-            PersonaService.changeToDefaultPersona();
-        }
-        else if (1 === toWhich.id)
-        {
-            PersonaSwitcher.logger.log();
-            PersonaService.changeToPersona (PersonaService.customPersona);
-        }
-        else
-        {
-            PersonaSwitcher.logger.log();
-            PersonaService.changeToPersona (toWhich);
-        }
-    }
     PersonaSwitcher.logger.log ('using currentTheme');
 
     if (toWhich === null)
@@ -435,20 +383,33 @@ PersonaSwitcher.switchTo = function (toWhich, index)
     }
 };
 
+PersonaSwitcher.setCurrentTheme = function (doc, index)
+{
+    var menus = ['personaswitcher-main-menubar-popup',
+        'personaswitcher-tools-submenu-popup'];
+
+    for (var aMenu in menus)
+    {
+        var menu = doc.getElementById(menus[aMenu]);
+
+        // not all windows have this menu
+        if (menu)
+        {
+            var themes =  menu.children;
+            if(themes[PersonaSwitcher.currentIndex])
+            {
+                themes[PersonaSwitcher.currentIndex].removeAttribute("checked");
+                themes[index].setAttribute("checked", "true"); 
+            }
+        }
+    }
+};
+
 PersonaSwitcher.getPersonas = function()
 {
     PersonaSwitcher.currentThemes = LightweightThemeManager.usedThemes;
     PersonaSwitcher.logger.log (PersonaSwitcher.currentThemes.length);
 
-    if (PersonaSwitcher.PersonasPlusPresent)
-    {
-        PersonaSwitcher.logger.log (PersonaService.favorites);
-        if (PersonaService.favorites)
-        {
-            PersonaSwitcher.currentThemes = PersonaSwitcher.currentThemes.
-                concat (PersonaService.favorites);
-        }
-    }
     PersonaSwitcher.currentThemes.
         sort(function (a, b) { return a.name.localeCompare(b.name); });
     PersonaSwitcher.logger.log (PersonaSwitcher.currentThemes.length);
